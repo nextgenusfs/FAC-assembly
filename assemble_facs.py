@@ -20,6 +20,7 @@ parser.add_argument('-v', '--vector', required=True, help='FASTA vector sequence
 parser.add_argument('-1', '--forward', required=True, help='FASTQ R1')
 parser.add_argument('-2', '--reverse', required=True, help='FASTQ R2')
 parser.add_argument('-c', '--cpus', default=8, type=int, help='Number of CPUS')
+parser.add_argument('--skip_quality', action='store_true', help='Skip quality/adapter trimming')
 args=parser.parse_args()
 
 def which_path(file_name):
@@ -53,13 +54,17 @@ for x in dependencies:
 
 with open(logfile, 'w') as log:
 	#quality/adapter filter
-	print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-	cmd = ['trim_galore', '--paired', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
-	subprocess.call(cmd, stderr=log, stdout=log)
-	qualR1 = os.path.basename(args.forward).split('.f')[0]
-	qualR1 = qualR1+'_val_1.fq.gz'
-	qualR2 = os.path.basename(args.reverse).split('.f')[0]
-	qualR2 = qualR2+'_val_2.fq.gz'
+	if not args.skip_quality:
+		print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+		cmd = ['trim_galore', '--paired', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
+		subprocess.call(cmd, stderr=log, stdout=log)
+		qualR1 = os.path.basename(args.forward).split('.f')[0]
+		qualR1 = qualR1+'_val_1.fq.gz'
+		qualR2 = os.path.basename(args.reverse).split('.f')[0]
+		qualR2 = qualR2+'_val_2.fq.gz'
+	else:
+		qualR1 = args.forward
+		qualR2 = args.reverse
 
 	#map the reads to the vector using minimap2
 	print('[{:}] Mapping reads to vector using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
@@ -80,7 +85,7 @@ with open(logfile, 'w') as log:
 
 	#now run unicycler
 	print('[{:}] Assembling with Unicycler'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-	cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler']
+	cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
 	subprocess.call(cmd)
 	assembly = base+'_unicycler.fasta'
 	with open(assembly, 'w') as outfile:
