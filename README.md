@@ -50,6 +50,10 @@ It can be run using the above example like this:
 ```
 $ get_full_length_facs.py -a C1_unicycler.fasta -i IGteloFACpooldataNF.txt -p C1
 ```
+This will generate 3 files:
+1) Raw Mapping data from minimap2
+2) FASTA file containing full length sequences
+3) FASTA file containing unassigned sequences
 
 ### Dependencies
 * Python 2
