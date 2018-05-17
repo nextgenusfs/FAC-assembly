@@ -96,7 +96,7 @@ $ cat *_complete_facs.fasta > full-length_sequences.fasta
 
 #combine the quality trimmed and vector subtracted data for each forward/reverse read
 $ cat C1_clean_R1.fastq.gz RA_clean_R1.fastq.gz P1_clean_R1.fastq.gz > cleaned_R1.fastq.gz
-$ cat C1_clean_R2.fastq.gz RA_clean_R2.fastq.gz P1_clean_R2.fastq.gz > cleaned.fastq.gz
+$ cat C1_clean_R2.fastq.gz RA_clean_R2.fastq.gz P1_clean_R2.fastq.gz > cleaned_R2.fastq.gz
 
 #we can now re-run assembly but subtract reads that are already part of full-length sequences
 $ assemble_facs.py -v full-length_sequences.fasta -1 cleaned_R1.fastq.gz -2 cleaned_R2.fastq.gz --skip_quality
