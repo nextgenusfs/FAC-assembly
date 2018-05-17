@@ -7,6 +7,8 @@ import mappy
 import platform
 import datetime
 
+__version__ = "0.0.1"
+
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -19,6 +21,7 @@ parser.add_argument('-a', '--assembly', required=True, help='Assembly in FASTA f
 parser.add_argument('-i', '--input', required=True, help='TSV FAC end sequences')
 parser.add_argument('-p', '--pool', nargs='+', help='Name of seq pool')
 parser.add_argument('--min_len_complete', type=int, default=75000, help='Name of seq pool')
+parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
 args=parser.parse_args()
 
 def countfasta(input):

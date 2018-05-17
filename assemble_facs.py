@@ -8,6 +8,7 @@ import shutil
 import datetime
 import platform
 
+__version__ = "0.0.2"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -21,6 +22,7 @@ parser.add_argument('-1', '--forward', required=True, help='FASTQ R1')
 parser.add_argument('-2', '--reverse', required=True, help='FASTQ R2')
 parser.add_argument('-c', '--cpus', default=8, type=int, help='Number of CPUS')
 parser.add_argument('--skip_quality', action='store_true', help='Skip quality/adapter trimming')
+parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
 args=parser.parse_args()
 
 def which_path(file_name):
