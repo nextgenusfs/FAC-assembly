@@ -94,12 +94,12 @@ $ get_full_length_facs.py -a P1_unicycler.fasta -i IGteloFACpooldataNF.txt -p P1
 #combine all full-length sequences
 $ cat *_complete_facs.fasta > full-length_sequences.fasta
 
-#combine the quality trimmed data for each forward/reverse read
-$ cat C1_S9_L001_R1_001_val_1.fq.gz RA_S1_L001_R1_001_val_1.fq.gz P1_S21_L001_R1_001_val_1.fq.gz > q-trimmed_R1.fastq.gz
-$ cat C1_S9_L001_R2_001_val_2.fq.gz RA_S1_L001_R2_001_val_2.fq.gz P1_S21_L001_R2_001_val_2.fq.gz > q-trimmed_R2.fastq.gz
+#combine the quality trimmed and vector subtracted data for each forward/reverse read
+$ cat C1_clean_R1.fastq.gz RA_clean_R1.fastq.gz P1_clean_R1.fastq.gz > cleaned_R1.fastq.gz
+$ cat C1_clean_R2.fastq.gz RA_clean_R2.fastq.gz P1_clean_R2.fastq.gz > cleaned.fastq.gz
 
 #we can now re-run assembly but subtract reads that are already part of full-length sequences
-$ assemble_facs.py -v full-length_sequences.fasta -1 q-trimmed_R1.fastq.gz -2 q-trimmed_R2.fastq.gz --skip_quality
+$ assemble_facs.py -v full-length_sequences.fasta -1 cleaned_R1.fastq.gz -2 cleaned_R2.fastq.gz --skip_quality
 
 #and then finally pull out full-length from this combined assembly
 $ get_full_length_facs.py -a q-trimmed_unicycler.fasta -i IGteloFACpooldataNF.txt --pool C1 RA P1
