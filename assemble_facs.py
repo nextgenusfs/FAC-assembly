@@ -51,7 +51,14 @@ for x in dependencies:
 	if not which_path(x):
 		print('{:} is not properly installed, install and re-run script'.format(x))
 		sys.exit(1)
-
+		
+#check input files
+files = [args.assembly, args.forward, args.reverse]
+for x in files:
+	if not os.path.isfile(os.path.abspath(x)):
+		print('{:} file is not found, full path: {:}'.format(x, os.path.abspath(x)))
+		sys.exit(1) 
+		
 with open(logfile, 'w') as log:
 	#quality/adapter filter
 	if not args.skip_quality:
