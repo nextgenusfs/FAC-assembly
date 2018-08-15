@@ -7,7 +7,7 @@ import mappy
 import platform
 import datetime
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
@@ -21,6 +21,7 @@ parser.add_argument('-a', '--assembly', required=True, help='Assembly in FASTA f
 parser.add_argument('-i', '--input', required=True, help='TSV FAC end sequences')
 parser.add_argument('-p', '--pool', nargs='+', help='Name of seq pool')
 parser.add_argument('--min_len_complete', type=int, default=75000, help='Name of seq pool')
+parser.add_argument('-v', '--debug', action='store_true', help='Debug print some debugging')
 parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
 args=parser.parse_args()
 
@@ -125,7 +126,7 @@ for k,v in PEhits.items():
                 if not k in flags:
                     flags[k] = ['primer_orientation_mismatch']
                 else:
-                    flags[k].apend('primer_orientation_mismatch')
+                    flags[k].append('primer_orientation_mismatch')
                 if not v[1][0] in completeFACs:
                     completeFACs[v[1][0]] = [k]
                 else:
@@ -141,7 +142,9 @@ for k,v in SEhits.items():
             completeFACs[v[0]].append(k)
 #print(completeFACs)
 #print(orientation)
-#print(flags)
+if args.debug:
+	for k,v in natsorted(flags.items()):
+		print(k,v)
 Complete = basename+'_complete_facs.fasta'
 Unassigned = basename+'_unassigned_facs.fasta'
 complete_count = 0
