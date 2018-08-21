@@ -6,8 +6,9 @@ import argparse
 import mappy
 import platform
 import datetime
+from natsort import natsorted
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
