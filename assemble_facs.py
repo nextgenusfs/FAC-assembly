@@ -8,7 +8,7 @@ import shutil
 import datetime
 import platform
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -66,16 +66,6 @@ def fasta2bed(input, output):
         with open(input, 'rU') as infile:
             for Header, Seq in SimpleFastaParser(infile):
                 outfile.write('{:}\t{:}\t{:}\n'.format(Header, 0, len(Seq)))
-
-def execute(cmd, dir):
-    DEVNULL = open(os.devnull, 'w')
-    popen = subprocess.Popen(cmd, cwd=dir, stdout=subprocess.PIPE, universal_newlines=True, stderr=DEVNULL)
-    for stdout_line in iter(popen.stdout.readline, ""):
-        yield stdout_line 
-    popen.stdout.close()
-    return_code = popen.wait()
-    if return_code:
-        raise subprocess.CalledProcessError(return_code, cmd)
 
             
 #get basename
@@ -153,22 +143,30 @@ with open(logfile, 'w') as log:
     
     #now map reads back to assembly and get coverage stats
     print('[{:}] Mapping reads to assembly, calculating coverage'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-    fasta2bed(os.path.abspath(assembly), base+'.assembly.bed')
+    lenBED = base+'.assembly.bed'
+    fasta2bed(os.path.abspath(assembly), lenBED)
     cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(assembly), cleanR1, cleanR2]
-    mappedBAM = base+'mapped2assembly.bam'
+    mappedBAM = base+'.mapped2assembly.bam'
     p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log)
-    p2 = subprocess.Popen(['samtools', 'sort', '-@', str(args.cpus // 2), '-o', mappedBAM, '-'], stdout=subprocess.PIPE, stderr=log, stdin=p1.stdout)
+    p2 = subprocess.Popen(['samtools', 'sort', '-o', mappedBAM, '-'], stdout=subprocess.PIPE, stderr=log, stdin=p1.stdout)
     p1.stdout.close()
     p2.communicate()
-    coverageBed = base+'mapped_coverage.bed'
-    with open(coverageBed, 'w') as bed_out:
-        for line in execute(['samtools', 'bedcov', base+'.assembly.bed', mappedBAM], '.'):
-            bed_out.write(line)
-            if not line or line.startswith('\n') or line.count('\t') < 3:
-                continue
-            line = line.strip()
-            cols = line.split('\t')
-            cov = int(cols[3]) / float(cols[2])
-            print('{:} len={:} coverage={:}X'.format(cols[0], cols[2], cov))
+    coverageBed = base+'.mapped_coverage.bed'
+    coverageFinal = base+'.coverage-stats.txt'
+    cov_cmd = ['samtools', 'bedcov', lenBED, mappedBAM]
+    if os.path.isfile(mappedBAM) and os.path.isfile(lenBED): #check files exist before running
+        with open(coverageBed, 'w') as output:
+            subprocess.call(cov_cmd, stdout=output, stderr=log)
+        if os.path.isfile(coverageBed):
+            with open(coverageFinal, 'w') as outfile:
+                with open(coverageBed, 'rU') as bedfile:
+                    for line in bedfile:
+                        if not line or line.startswith('\n') or line.count('\t') < 3:
+                            continue
+                        line = line.strip()
+                        cols = line.split('\t')
+                        cov = int(cols[3]) / float(cols[2])
+                        print('{:} len={:} coverage={:}X'.format(cols[0], cols[2], cov))
+                        outfile.write('{:} len={:} coverage={:}X'.format(cols[0], cols[2], cov))
     print('[{:}] Logfile: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), logfile))
 print('------------------------------------------')
