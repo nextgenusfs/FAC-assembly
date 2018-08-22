@@ -8,7 +8,7 @@ import shutil
 import datetime
 import platform
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
