@@ -8,7 +8,7 @@ import shutil
 import datetime
 import platform
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -162,6 +162,7 @@ with open(logfile, 'w') as log:
             with open(coverageFinal, 'w') as outfile:
                 with open(coverageBed, 'rU') as bedfile:
                     for line in bedfile:
+                            log.write(line)
                         if not line or line.startswith('\n') or line.count('\t') < 3:
                             continue
                         line = line.strip()
