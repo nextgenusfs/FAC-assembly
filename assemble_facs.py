@@ -151,6 +151,7 @@ with open(logfile, 'w') as log:
     p2 = subprocess.Popen(['samtools', 'sort', '-o', mappedBAM, '-'], stdout=subprocess.PIPE, stderr=log, stdin=p1.stdout)
     p1.stdout.close()
     p2.communicate()
+    subprocess.call(['samtools', 'index', mappedBAM])
     coverageBed = base+'.mapped_coverage.bed'
     coverageFinal = base+'.coverage-stats.txt'
     cov_cmd = ['samtools', 'bedcov', lenBED, mappedBAM]
