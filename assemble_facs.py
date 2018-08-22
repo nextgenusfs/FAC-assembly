@@ -162,7 +162,7 @@ with open(logfile, 'w') as log:
             with open(coverageFinal, 'w') as outfile:
                 with open(coverageBed, 'rU') as bedfile:
                     for line in bedfile:
-                            log.write(line)
+                        log.write(line)
                         if not line or line.startswith('\n') or line.count('\t') < 3:
                             continue
                         line = line.strip()
