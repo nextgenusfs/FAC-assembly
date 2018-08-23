@@ -8,19 +8,22 @@ import shutil
 import datetime
 import platform
 
-__version__ = "0.0.6"
+__version__ = "0.1.0"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
         super(MyFormatter, self).__init__(prog, max_help_position=48)
 parser = argparse.ArgumentParser(prog='assemble_facs.py',
-    description = '''Script to quality trim, subtract vector reads, and assemble using unicyler''',
+    description = '''Script to quality trim, subtract vector reads, and assemble using unicyler or shovill''',
     epilog = """Written by Jon Palmer (2018) nextgenusfs@gmail.com""",
     formatter_class = MyFormatter)
 parser.add_argument('-v', '--vector', required=True, help='FASTA vector sequence')
 parser.add_argument('-1', '--forward', required=True, help='FASTQ R1')
 parser.add_argument('-2', '--reverse', required=True, help='FASTQ R2')
 parser.add_argument('-c', '--cpus', default=8, type=int, help='Number of CPUS')
+parser.add_argument('-a', '--assembler', default='unicycler', choices=['unicycler', 'shovill'],help='Assembler to use')
+parser.add_argument('--shovill_assembler', default='skesa', choices=['spades', 'skesa', 'megahit', 'velvet'], help='Shovill assembler to use')
+parser.add_argument('--shovill_ram', default=16, type=int, help='RAM in GB')
 parser.add_argument('--skip_quality', action='store_true', help='Skip quality/adapter trimming')
 parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
 args=parser.parse_args()
@@ -65,8 +68,15 @@ def fasta2bed(input, output):
     with open(output, 'w') as outfile:
         with open(input, 'rU') as infile:
             for Header, Seq in SimpleFastaParser(infile):
-                outfile.write('{:}\t{:}\t{:}\n'.format(Header, 0, len(Seq)))
+                outfile.write('{:}\t{:}\t{:}\n'.format(Header.split(' ')[0], 0, len(Seq)))
 
+def unicycler_version():
+    p = subprocess.Popen(['unicycler', '--version'], stdout=subprocess.PIPE).communicate()[0].split('\n')[0]
+    vers = p.split(' v')[-1].replace('b', '')
+    if tuple(vers.split('.')) > ('0', '4', '0'):
+        return True
+    else:
+        return False
             
 #get basename
 if '_' in os.path.basename(args.forward):
@@ -100,46 +110,65 @@ for x in files:
 with open(logfile, 'w') as log:
     #quality/adapter filter
     if not args.skip_quality:
-        print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-        cmd = ['trim_galore', '--paired', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
-        subprocess.call(cmd, stderr=log, stdout=log)
         qualR1 = os.path.basename(args.forward).split('.f')[0]
         qualR1 = qualR1+'_val_1.fq.gz'
         qualR2 = os.path.basename(args.reverse).split('.f')[0]
         qualR2 = qualR2+'_val_2.fq.gz'
+        if not os.path.isfile(qualR1) and not os.path.isfile(qualR2):
+            print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+            cmd = ['trim_galore', '--paired', '--length', '100', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
+            subprocess.call(cmd, stderr=log, stdout=log)
+        else:
+            print('[{:}] Using existing Trim-galore output'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+
     else:
         qualR1 = args.forward
         qualR2 = args.reverse
 
-    #map the reads to the vector using minimap2
+    #map the reads to the vector using minimap2, keep unmapped reads
     print('[{:}] Mapping reads to vector using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
     cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(args.vector), qualR1, qualR2]
-    SAM = base+'_minimap2_align.sam'
-    BAM1 = base +'_minimap2_align.bam'
-    with open(SAM, 'w') as output:
-        subprocess.call(cmd, stdout=output, stderr=log)
-    with open(BAM1, 'w') as output:
-        subprocess.call(['samtools', 'view', '-bS', '-@', str(bamcpus), SAM], stdout=output, stderr=log)
     cleanR1 = base+'_clean_R1.fastq.gz'
     cleanR2 = base+'_clean_R2.fastq.gz'
-    print('[{:}] Extracting unmapped reads using Samtools (samtools fastq -F 0x2)'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-    cmd = ['samtools', 'fastq', '-1', cleanR1, '-2', cleanR2, '-@', str(bamcpus), '-F', '0x2', BAM1]
-    subprocess.call(cmd, stderr=log)
-    os.remove(SAM)
-    os.remove(BAM1)
-
-    #now run unicycler
-    print('[{:}] Assembling with Unicycler'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-    cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
-    subprocess.call(cmd)
-    assembly = base+'_unicycler.fasta'
-    with open(assembly, 'w') as outfile:
-        with open(os.path.join(base+'_unicycler', 'assembly.fasta'), 'rU') as infile:
-            for line in infile:
-                if line.startswith('>'):
-                    line = line.replace('>', '>ctg')
-                outfile.write(line)
-    print('[{:}] Unicycler finished, final output assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assembly))
+    if not os.path.isfile(cleanR1) and not os.path.isfile(cleanR2):
+        p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log)
+        p2 = subprocess.Popen(['samtools', 'sort', '-@', str(bamcpus), '-'], stdin=p1.stdout, stderr=log, stdout=subprocess.PIPE)
+        p3 = subprocess.Popen(['samtools', 'fastq', '-1', cleanR1, '-2', cleanR2, '-@', str(bamcpus), '-f', '12', '-'], stdin=p2.stdout, stderr=log, stdout=subprocess.PIPE)
+        p1.stdout.close()
+        p2.stdout.close()
+        p3.communicate()
+    else:
+        print('[{:}] Using existing vector-cleaned FASTQ files'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+    
+    assembly = base+'.assembly.fasta'
+    if args.assembler == 'unicycler':
+        #now run unicycler
+        print('[{:}] Assembling with Unicycler'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+        if unicycler_version():
+            cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
+        else:
+            cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
+        subprocess.call(cmd)
+        with open(assembly, 'w') as outfile:
+            with open(os.path.join(base+'_unicycler', 'assembly.fasta'), 'rU') as infile:
+                for line in infile:
+                    if line.startswith('>'):
+                        line = line.replace('>', '>ctg')
+                    outfile.write(line)
+        print('[{:}] Unicycler finished, final output assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assembly))
+    elif args.assembler == 'shovill':
+        print('[{:}] Assembling with Shovill - using {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), args.shovill_assembler))
+        cmd = ['shovill', '--ram', str(args.shovill_ram), '--assembler', args.shovill_assembler, '--outdir', 'shovill_out', '--R1', cleanR1, '--R2', cleanR2, '--cpus', str(args.cpus)]
+        if os.path.isdir('shovill_out'):
+            cmd.append('--force')
+        subprocess.call(cmd)
+        with open(assembly, 'w') as outfile:
+            with open(os.path.join('shovill_out', 'contigs.fa'), 'rU') as infile:
+                for line in infile:
+                    if line.startswith('>'):
+                        line = line.replace('>contig', '>ctg')
+                    outfile.write(line)
+        print('[{:}] Shovill finished, final output assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assembly))
     
     #now map reads back to assembly and get coverage stats
     print('[{:}] Mapping reads to assembly, calculating coverage'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
@@ -148,7 +177,7 @@ with open(logfile, 'w') as log:
     cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(assembly), cleanR1, cleanR2]
     mappedBAM = base+'.mapped2assembly.bam'
     p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log)
-    p2 = subprocess.Popen(['samtools', 'sort', '-o', mappedBAM, '-'], stdout=subprocess.PIPE, stderr=log, stdin=p1.stdout)
+    p2 = subprocess.Popen(['samtools', 'sort', '-@', str(bamcpus), '-o', mappedBAM, '-'], stdout=subprocess.PIPE, stderr=log, stdin=p1.stdout)
     p1.stdout.close()
     p2.communicate()
     subprocess.call(['samtools', 'index', mappedBAM])
@@ -168,7 +197,7 @@ with open(logfile, 'w') as log:
                         line = line.strip()
                         cols = line.split('\t')
                         cov = int(cols[3]) / float(cols[2])
-                        print('{:} len={:} coverage={:}X'.format(cols[0], cols[2], cov))
-                        outfile.write('{:} len={:} coverage={:}X'.format(cols[0], cols[2], cov))
+                        print('{:} len={:} coverage={:.2f}X'.format(cols[0], cols[2], cov))
+                        outfile.write('{:} len={:} coverage={:.2f}X'.format(cols[0], cols[2], cov))
     print('[{:}] Logfile: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), logfile))
 print('------------------------------------------')
