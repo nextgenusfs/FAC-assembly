@@ -198,6 +198,6 @@ with open(logfile, 'w') as log:
                         cols = line.split('\t')
                         cov = int(cols[3]) / float(cols[2])
                         print('{:} len={:} coverage={:.2f}X'.format(cols[0], cols[2], cov))
-                        outfile.write('{:} len={:} coverage={:.2f}X'.format(cols[0], cols[2], cov))
+                        outfile.write('{:} len={:} coverage={:.2f}X\n'.format(cols[0], cols[2], cov))
     print('[{:}] Logfile: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), logfile))
 print('------------------------------------------')
