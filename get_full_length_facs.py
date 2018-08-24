@@ -8,7 +8,7 @@ import platform
 import datetime
 from natsort import natsorted
 
-__version__ = "0.0.3"
+__version__ = "0.1.0"
 
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
@@ -74,41 +74,41 @@ SEhits = {}
 print('[{:}] Mapping Sanger reads to assembly using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
 mapData = basename+'.map.txt'
 with open(mapData, 'w') as rawdata:
-	header = ['FAC_name', 'read_num', 'query_start', 'query_end', 'strand', 'contig', 'contig_len', 'ref_start', 'ref_end', 'match_len', 'aln_len', 'map_qual', 'cigar']
-	rawdata.write('{:}\n'.format('\t'.join(header)))
-	for k,v in trimDict.items():
-		#paired
-		if len(v['fwd']) > 50 and len(v['rev']) > 50:
-			for align in a.map(v['fwd'], v['rev']):
-				if int(align.mapq) < 60:
-					continue
-				rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
-				if int(align.ctg_len) < args.min_len_complete:
-					continue
-				if not k in PEhits:
-					PEhits[k] = {align.read_num: (align.ctg, align.strand, align.ctg_len, len(v['fwd']))}
-				else:
-					if not align.read_num in PEhits[k]:
-						PEhits[k][align.read_num] = (align.ctg, align.strand, align.ctg_len, len(v['rev']))
-		#since some Sanger Sequences are missing, allow a single hit to be a "full length" if 
-		elif len(v['fwd']) > 50:
-			for align in a.map(v['fwd']):
-				if int(align.mapq) < 60:
-					continue
-				rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
-				if int(align.ctg_len) < args.min_len_complete:
-					continue
-				if not k in SEhits:
-					SEhits[k] = (align.ctg, align.strand, align.ctg_len, len(v['fwd']))
-		elif len(v['rev']) > 50:
-			for align in a.map(v['rev']):
-				if int(align.mapq) < 60:
-					continue
-				rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
-				if int(align.ctg_len) < args.min_len_complete:
-					continue
-				if not k in SEhits:
-					SEhits[k] = (align.ctg, align.strand, align.ctg_len, len(v['rev']))
+    header = ['FAC_name', 'read_num', 'query_start', 'query_end', 'strand', 'contig', 'contig_len', 'ref_start', 'ref_end', 'match_len', 'aln_len', 'map_qual', 'cigar']
+    rawdata.write('{:}\n'.format('\t'.join(header)))
+    for k,v in trimDict.items():
+        #paired
+        if len(v['fwd']) > 50 and len(v['rev']) > 50:
+            for align in a.map(v['fwd'], v['rev']):
+                if int(align.mapq) < 60:
+                    continue
+                rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
+                if int(align.ctg_len) < args.min_len_complete:
+                    continue
+                if not k in PEhits:
+                    PEhits[k] = {align.read_num: (align.ctg, align.strand, align.ctg_len, len(v['fwd']))}
+                else:
+                    if not align.read_num in PEhits[k]:
+                        PEhits[k][align.read_num] = (align.ctg, align.strand, align.ctg_len, len(v['rev']))
+        #since some Sanger Sequences are missing, allow a single hit to be a "full length" if 
+        elif len(v['fwd']) > 50:
+            for align in a.map(v['fwd']):
+                if int(align.mapq) < 60:
+                    continue
+                rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
+                if int(align.ctg_len) < args.min_len_complete:
+                    continue
+                if not k in SEhits:
+                    SEhits[k] = (align.ctg, align.strand, align.ctg_len, len(v['fwd']))
+        elif len(v['rev']) > 50:
+            for align in a.map(v['rev']):
+                if int(align.mapq) < 60:
+                    continue
+                rawdata.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\n'.format(k, align.read_num, align.q_st, align.q_en, align.strand, align.ctg, align.ctg_len, align.r_st, align.r_en, align.mlen, align.blen, align.mapq, align.cigar_str))
+                if int(align.ctg_len) < args.min_len_complete:
+                    continue
+                if not k in SEhits:
+                    SEhits[k] = (align.ctg, align.strand, align.ctg_len, len(v['rev']))
 #loop through PE hits first
 completeFACs = {}
 orientation = {}
@@ -144,8 +144,8 @@ for k,v in SEhits.items():
 #print(completeFACs)
 #print(orientation)
 if args.debug:
-	for k,v in natsorted(flags.items()):
-		print(k,v)
+    for k,v in natsorted(flags.items()):
+        print(k,v)
 Complete = basename+'_complete_facs.fasta'
 Unassigned = basename+'_unassigned_facs.fasta'
 complete_count = 0
@@ -166,7 +166,7 @@ with open(Complete, 'w') as comp:
                 complete_count += len(completeFACs[seq[0]])
                 comp.write('>{:};organism={:};{:};\n{:}\n'.format('|'.join(completeFACs[seq[0]]), inputDict[facname]['organism'], ';'.join(comments), FinalSeq))
             else:
-            	the_rest += 1
+                the_rest += 1
                 bad.write('>{:} {:}\n{:}\n'.format(seq[0], seq[3], seq[1]))
 print('[{:}] Found {:,} full-length FACs corresponing to {:} unique sequences'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), complete_count, countfasta(Complete)))
 print('[{:}] Full-length sequences: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), Complete))

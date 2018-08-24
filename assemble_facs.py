@@ -7,8 +7,15 @@ import subprocess
 import shutil
 import datetime
 import platform
+import socket
+import gzip
+import io
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -17,7 +24,8 @@ parser = argparse.ArgumentParser(prog='assemble_facs.py',
     description = '''Script to quality trim, subtract vector reads, and assemble using unicyler or shovill''',
     epilog = """Written by Jon Palmer (2018) nextgenusfs@gmail.com""",
     formatter_class = MyFormatter)
-parser.add_argument('-v', '--vector', required=True, help='FASTA vector sequence')
+parser.add_argument('-v', '--vector', help='FASTA vector sequence')
+parser.add_argument('-s', '--subtract', default='CP014272.1', help='FASTA sequence to map and subtract from reads')
 parser.add_argument('-1', '--forward', required=True, help='FASTQ R1')
 parser.add_argument('-2', '--reverse', required=True, help='FASTQ R2')
 parser.add_argument('-c', '--cpus', default=8, type=int, help='Number of CPUS')
@@ -26,7 +34,40 @@ parser.add_argument('--shovill_assembler', default='skesa', choices=['spades', '
 parser.add_argument('--shovill_ram', default=16, type=int, help='RAM in GB')
 parser.add_argument('--skip_quality', action='store_true', help='Skip quality/adapter trimming')
 parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
+parser.add_argument('--quiet', action='store_true', help='Keep messages in terminal minimal')
 args=parser.parse_args()
+
+
+def download(url, name):
+    file_name = name
+    try:
+        u = urlopen(url)
+        f = open(file_name, 'wb')
+        block_sz = 8192
+        while True:
+            buffer = u.read(block_sz)
+            if not buffer:
+                break
+            f.write(buffer)
+        f.close()
+    except socket.error as e:
+        if e.errno != errno.ECONNRESET:
+            raise
+        pass
+
+def countfastq(input):
+    if input.endswith('.gz'):
+        linenum = 0
+        gz = gzip.open(input, 'rb')
+        f = io.BufferedReader(gz)
+        for line in f.readlines():
+            linenum += 1
+        gz.close()
+        count = linenum // 4
+    else:
+        lines = sum(1 for line in open(input))
+        count = int(lines) // 4
+    return count
 
 def SimpleFastaParser(handle):
     # Skip any text before the first record (e.g. blank lines, comments)
@@ -77,7 +118,7 @@ def unicycler_version():
         return True
     else:
         return False
-            
+
 #get basename
 if '_' in os.path.basename(args.forward):
     base = os.path.basename(args.forward).split('_')[0]
@@ -94,19 +135,22 @@ if os.path.isfile(logfile):
 
 print('------------------------------------------')
 print('[{:}] Running Python v{:} '.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), platform.python_version()))
-dependencies = ['trim_galore', 'minimap2', 'samtools', 'unicycler']
+dependencies = ['trim_galore', 'minimap2', 'samtools']
+dependencies.append(args.assembler)
 for x in dependencies:
     if not which_path(x):
         print('{:} is not properly installed, install and re-run script'.format(x))
         sys.exit(1)
         
 #check input files
-files = [args.vector, args.forward, args.reverse]
+files = [args.forward, args.reverse]
 for x in files:
     if not os.path.isfile(os.path.abspath(x)):
         print('{:} file is not found, full path: {:}'.format(x, os.path.abspath(x)))
         sys.exit(1) 
-        
+
+origCount = countfastq(args.forward)
+print('[{:}] Loaded {:,} PE reads'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), origCount))
 with open(logfile, 'w') as log:
     #quality/adapter filter
     if not args.skip_quality:
@@ -118,16 +162,32 @@ with open(logfile, 'w') as log:
             print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
             cmd = ['trim_galore', '--paired', '--length', '100', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
             subprocess.call(cmd, stderr=log, stdout=log)
+            qualCount = countfastq(qualR1)
         else:
             print('[{:}] Using existing Trim-galore output'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-
+            qualCount = countfastq(qualR1)
     else:
         qualR1 = args.forward
         qualR2 = args.reverse
+    print('[{:}] {:,} PE reads passed quality trimming'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), qualCount))
+    
+    subtractDB = base+"."+str(os.getpid())+'.subtract.fasta'
+    acc_file = args.subtract+".fna"
+    if not os.path.isfile(acc_file):
+        url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=%s&rettype=fasta' % (args.subtract)
+        download(url, acc_file)
+    if args.vector and os.path.isfile(acc_file):
+        with open(subtractDB, 'wb') as wfd:
+            for fname in [args.vector, acc_file]:
+                with open(fname,'rb') as fd:
+                    shutil.copyfileobj(fd, wfd)
+    else:
+        if not args.vector:
+            shutil.copyfile(acc_file, subtractDB)
 
     #map the reads to the vector using minimap2, keep unmapped reads
-    print('[{:}] Mapping reads to vector using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-    cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(args.vector), qualR1, qualR2]
+    print('[{:}] Mapping reads to subtraction database using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+    cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(subtractDB), qualR1, qualR2]
     cleanR1 = base+'_clean_R1.fastq.gz'
     cleanR2 = base+'_clean_R2.fastq.gz'
     if not os.path.isfile(cleanR1) and not os.path.isfile(cleanR2):
@@ -137,8 +197,11 @@ with open(logfile, 'w') as log:
         p1.stdout.close()
         p2.stdout.close()
         p3.communicate()
+        cleanCount = countfastq(cleanR1)
     else:
         print('[{:}] Using existing vector-cleaned FASTQ files'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+        cleanCount = countfastq(cleanR1)
+    print('[{:}] {:,} PE reads pass subtraction filtering'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), cleanCount))
     
     assembly = base+'.assembly.fasta'
     if args.assembler == 'unicycler':
@@ -148,27 +211,37 @@ with open(logfile, 'w') as log:
             cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
         else:
             cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
-        subprocess.call(cmd)
+        if args.quiet:
+            subprocess.call(cmd, stderr=log, stdout=log)
+        else:
+            subprocess.call(cmd)
+        assemblyCount = 0
         with open(assembly, 'w') as outfile:
             with open(os.path.join(base+'_unicycler', 'assembly.fasta'), 'rU') as infile:
                 for line in infile:
                     if line.startswith('>'):
+                        assemblyCount += 1
                         line = line.replace('>', '>ctg')
                     outfile.write(line)
-        print('[{:}] Unicycler finished, final output assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assembly))
+        print('[{:}] Unicycler finished, {:,} contigs in assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assemblyCount, assembly))
     elif args.assembler == 'shovill':
         print('[{:}] Assembling with Shovill - using {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), args.shovill_assembler))
         cmd = ['shovill', '--ram', str(args.shovill_ram), '--assembler', args.shovill_assembler, '--outdir', 'shovill_out', '--R1', cleanR1, '--R2', cleanR2, '--cpus', str(args.cpus)]
         if os.path.isdir('shovill_out'):
             cmd.append('--force')
-        subprocess.call(cmd)
+        if args.quiet:
+            subprocess.call(cmd, stderr=log, stdout=log)
+        else:
+            subprocess.call(cmd)
+        assemblyCount = 0
         with open(assembly, 'w') as outfile:
             with open(os.path.join('shovill_out', 'contigs.fa'), 'rU') as infile:
                 for line in infile:
                     if line.startswith('>'):
+                        assemblyCount += 1
                         line = line.replace('>contig', '>ctg')
                     outfile.write(line)
-        print('[{:}] Shovill finished, final output assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assembly))
+        print('[{:}] Shovill finished, {:,} contigs in assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assemblyCount, assembly))
     
     #now map reads back to assembly and get coverage stats
     print('[{:}] Mapping reads to assembly, calculating coverage'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
