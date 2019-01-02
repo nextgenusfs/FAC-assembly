@@ -15,7 +15,7 @@ try:
 except ImportError:
     from urllib2 import urlopen
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 #setup menu with argparse
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, prog):
@@ -29,14 +29,13 @@ parser.add_argument('-s', '--subtract', default='CP014272.1', help='FASTA sequen
 parser.add_argument('-1', '--forward', required=True, help='FASTQ R1')
 parser.add_argument('-2', '--reverse', required=True, help='FASTQ R2')
 parser.add_argument('-c', '--cpus', default=8, type=int, help='Number of CPUS')
-parser.add_argument('-a', '--assembler', default='unicycler', choices=['unicycler', 'shovill'],help='Assembler to use')
-parser.add_argument('--shovill_assembler', default='skesa', choices=['spades', 'skesa', 'megahit', 'velvet'], help='Shovill assembler to use')
+parser.add_argument('-a', '--assembler', default='shovill', choices=['unicycler', 'shovill'],help='Assembler to use')
+parser.add_argument('--shovill_assembler', default='spades', choices=['spades', 'skesa', 'megahit', 'velvet'], help='Shovill assembler to use')
 parser.add_argument('--shovill_ram', default=16, type=int, help='RAM in GB')
 parser.add_argument('--skip_quality', action='store_true', help='Skip quality/adapter trimming')
 parser.add_argument('--version', action='version', version='%(prog)s v{version}'.format(version=__version__))
 parser.add_argument('--quiet', action='store_true', help='Keep messages in terminal minimal')
 args=parser.parse_args()
-
 
 def download(url, name):
     file_name = name
@@ -112,8 +111,9 @@ def fasta2bed(input, output):
                 outfile.write('{:}\t{:}\t{:}\n'.format(Header.split(' ')[0], 0, len(Seq)))
 
 def unicycler_version():
-    p = subprocess.Popen(['unicycler', '--version'], stdout=subprocess.PIPE).communicate()[0].split('\n')[0]
-    vers = p.split(' v')[-1].replace('b', '')
+    p = subprocess.Popen(['unicycler', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+    p = p.decode(encoding='utf-8')
+    vers = p.split(' v')[-1].replace('\n', '')
     if tuple(vers.split('.')) > ('0', '4', '0'):
         return True
     else:
@@ -127,6 +127,8 @@ else:
 
 #get compression threads
 bamcpus = args.cpus // 2
+if bamcpus > 4:
+	bamcpus = 4
 
 #generate logfile
 logfile = base + '_assemble_facs.log'
@@ -135,7 +137,7 @@ if os.path.isfile(logfile):
 
 print('------------------------------------------')
 print('[{:}] Running Python v{:} '.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), platform.python_version()))
-dependencies = ['trim_galore', 'minimap2', 'samtools']
+dependencies = ['minimap2', 'samtools']
 dependencies.append(args.assembler)
 for x in dependencies:
     if not which_path(x):
@@ -152,25 +154,6 @@ for x in files:
 origCount = countfastq(args.forward)
 print('[{:}] Loaded {:,} PE reads'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), origCount))
 with open(logfile, 'w') as log:
-    #quality/adapter filter
-    if not args.skip_quality:
-        qualR1 = os.path.basename(args.forward).split('.f')[0]
-        qualR1 = qualR1+'_val_1.fq.gz'
-        qualR2 = os.path.basename(args.reverse).split('.f')[0]
-        qualR2 = qualR2+'_val_2.fq.gz'
-        if not os.path.isfile(qualR1) and not os.path.isfile(qualR2):
-            print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-            cmd = ['trim_galore', '--paired', '--length', '100', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
-            subprocess.call(cmd, stderr=log, stdout=log)
-            qualCount = countfastq(qualR1)
-        else:
-            print('[{:}] Using existing Trim-galore output'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-            qualCount = countfastq(qualR1)
-    else:
-        qualR1 = args.forward
-        qualR2 = args.reverse
-    print('[{:}] {:,} PE reads passed quality trimming'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), qualCount))
-    
     subtractDB = base+"."+str(os.getpid())+'.subtract.fasta'
     acc_file = args.subtract+".fna"
     if not os.path.isfile(acc_file):
@@ -187,7 +170,7 @@ with open(logfile, 'w') as log:
 
     #map the reads to the vector using minimap2, keep unmapped reads
     print('[{:}] Mapping reads to subtraction database using minimap2'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
-    cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(subtractDB), qualR1, qualR2]
+    cmd = ['minimap2', '-ax', 'sr', '-t', str(args.cpus), os.path.abspath(subtractDB), args.forward, args.reverse]
     cleanR1 = base+'_clean_R1.fastq.gz'
     cleanR2 = base+'_clean_R2.fastq.gz'
     if not os.path.isfile(cleanR1) and not os.path.isfile(cleanR2):
@@ -205,12 +188,32 @@ with open(logfile, 'w') as log:
     
     assembly = base+'.assembly.fasta'
     if args.assembler == 'unicycler':
+        #quality/adapter filter
+        if not args.skip_quality:
+            qualR1 = os.path.basename(args.forward).split('.f')[0]
+            qualR1 = qualR1+'_val_1.fq.gz'
+            qualR2 = os.path.basename(args.reverse).split('.f')[0]
+            qualR2 = qualR2+'_val_2.fq.gz'
+            if not os.path.isfile(qualR1) and not os.path.isfile(qualR2):
+                print('[{:}] Trimming adapters from reads using Trim Galore'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+                cmd = ['trim_galore', '--paired', '--length', '100', '--quality', '10', os.path.abspath(args.forward), os.path.abspath(args.reverse)]
+                subprocess.call(cmd, stderr=log, stdout=log)
+                qualCount = countfastq(qualR1)
+            else:
+                print('[{:}] Using existing Trim-galore output'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
+                qualCount = countfastq(qualR1)
+        else:
+            qualR1 = cleanR1
+            qualR2 = cleanR2
+            qualCount = countfastq(qualR1)
+        print('[{:}] {:,} PE reads passed quality trimming'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), qualCount))
+
         #now run unicycler
         print('[{:}] Assembling with Unicycler'.format(datetime.datetime.now().strftime('%b %d %I:%M %p')))
         if unicycler_version():
-            cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
+            cmd = ['unicycler', '--mode', 'conservative', '-t', str(args.cpus), '--min_fasta_length', '1000', '--linear_seqs', '60', '-1', qualR1, '-2', qualR2, '-o', base+'_unicycler', '--no_rotate']
         else:
-            cmd = ['unicycler', '-t', str(args.cpus), '--min_fasta_length', '1000', '-1', cleanR1, '-2', cleanR2, '-o', base+'_unicycler', '--no_rotate']
+            cmd = ['unicycler', '--mode', 'conservative', '-t', str(args.cpus), '--min_fasta_length', '1000', '-1', qualR1, '-2', qualR2, '-o', base+'_unicycler', '--no_rotate']
         if args.quiet:
             subprocess.call(cmd, stderr=log, stdout=log)
         else:
@@ -226,9 +229,11 @@ with open(logfile, 'w') as log:
         print('[{:}] Unicycler finished, {:,} contigs in assembly: {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), assemblyCount, assembly))
     elif args.assembler == 'shovill':
         print('[{:}] Assembling with Shovill - using {:}'.format(datetime.datetime.now().strftime('%b %d %I:%M %p'), args.shovill_assembler))
-        cmd = ['shovill', '--ram', str(args.shovill_ram), '--assembler', args.shovill_assembler, '--outdir', 'shovill_out', '--R1', cleanR1, '--R2', cleanR2, '--cpus', str(args.cpus)]
+        cmd = ['shovill', '--ram', str(args.shovill_ram), '--minlen', '1000', '--assembler', args.shovill_assembler, '--outdir', 'shovill_out', '--R1', cleanR1, '--R2', cleanR2, '--cpus', str(args.cpus)]
         if os.path.isdir('shovill_out'):
             cmd.append('--force')
+        if not args.skip_quality:
+            cmd.append('--trim')
         if args.quiet:
             subprocess.call(cmd, stderr=log, stdout=log)
         else:

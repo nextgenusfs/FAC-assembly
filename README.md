@@ -44,7 +44,7 @@ optional arguments:
   -a ASSEMBLY, --assembly ASSEMBLY            Assembly in FASTA format (default: None)
   -i INPUT, --input INPUT                     TSV FAC end sequences (default: None)
   -p POOL [POOL ...], --pool POOL [POOL ...]  Name of seq pool (default: None)
-  --min_len_complete MIN_LEN_COMPLETE         Name of seq pool (default: 75000)
+  --min_len MIN_LEN                           Minimum contig length to find end primers (default: 20000)
 ```
 It can be run using the above example like this:
 ```
@@ -53,25 +53,27 @@ $ get_full_length_facs.py -a C1_unicycler.fasta -i IGteloFACpooldataNF.txt -p C1
 This will generate 3 files:
 1) Raw Mapping data from minimap2
 2) FASTA file containing full length sequences
-3) FASTA file containing unassigned sequences
+3) FASTA file containing all sequences
 
 The raw data looks like:
 ```
-#FAC_name   read_num    query_start query_end   strand  contig  contig_len  ref_start   ref_end match_len   aln_len map_qual    cigar
-IGAaBAC10A5 1   100 1005    -1  ctg13   103104  102206  103104  896 905 60  15M1I25M1I24M1I55M1I4M1I12M1I59M1I704M
-IGAaBAC10A5 2   0   690 1   ctg13   103104  0   690 689 690 60  690M
-AtBAC07B20  1   61  470 -1  ctg8    115790  115382  115790  404 406 60  49M1I359M
-AtBAC07B20  2   3   567 1   ctg8    115790  9   574 547 553 60  5M1D559M
-AtBAC06G23  1   70  381 1   ctg17   84458   1341    1652    309 311 60  311M
-AtBAC06G23  2   0   416 -1  ctg19   46267   45848   46264   411 412 60  416M
+FAC_name	read_num	query_len	query_start	query_end	query_cov	strand	contig	contig_len	ref_start	ref_end	match_len	aln_len	pident	map_qual	cigar
+IGAwBAC1B10	1	1080	183	1078	82.9	-1	ctg00017	90870	89987	90870	875	895	97.76536312849163	60	9M1I20M1I5M1I5M1I12M1I22M1I8M1I19M1I65M1I7M1I71M1I23M1I617M
+IGAwBAC1B9	1	985	60	983	93.7	1	ctg00007	130612	0	908	901	928	97.09051724137932	60	4M1I102M5D605M1I50M1I10M1I9M1I13M1I19M1I20M1I8M2I3M1I6M1I8M1I3M1I5M1I6M2I5M1I6M1I11M1I10M
+IGAwBAC1B9	2	200	0	200	100.0	-1	ctg00007	130612	99649	99848	199	200	99.5	60	167M1I32M
+IGAwBAC1C16	1	160	20	160	87.5	1	ctg00020	49887	23726	23866	140	140	100.0	60	140M
+IGAwBAC1D11	1	200	15	200	92.5	1	ctg00020	49887	7514	7699	185	185	100.0	60	185M
+IGAwBAC1D15	1	200	19	200	90.5	-1	ctg00008	129517	105945	106126	178	181	98.34254143646409	60	181M
+IGAwBAC1D15	2	852	0	732	85.9	1	ctg00008	129517	36	755	705	732	96.31147540983606	60	585M1I21M1I34M1I9M1I5M1I17M1I9M1I11M1I5M1I7M2I10M2I6M
+IGAwBAC1
 ```
-And the full-length FASTA file looks like this (if multiple FACS are overlapping separated by '|'):
+And the "classified" FASTA file looks like this (if multiple FACS are overlapping separated by '|'):
 ```
->IGPeBAC4N19;organism=Penicillium expansum;length=125086;depth=0.47x;
+>>IGAwBAC1B9;organism=Aspergillus wentii;origin=ctg00007;length=99848;full_length=yes;
 AGCCCTAAGCCAAGCCCTAAGCCCTAAGCCCTAAGCCCTAAGCCCTAAGCCCTAAGCCCTAA...               
->AtBAC10C18;organism=Aspergillus terreus;length=122271;depth=1.00x;
+>IGFaBAC4L14;organism=Fusarium solani;origin=ctg00038-ctg00011;length=146644;full_length=stitched;
 GGATTCCGGAATGTGGAACGGGGCACAGGCACCGACCCTATCAAGGGGTAAGGGGATTCGGTCA...
->AtBAC01J18|AtBAC07B20;organism=Aspergillus terreus;length=115790;depth=2.33x;
+>IGPmBAC1A7;organism=Penicillium marneffei;origin=ctg00013;length=109916;full_length=no;
 AAACCCTAAACCCTAAACCCTAAACCCTAAACCCTAAACCCTAAACCCTAAACCCTAACCCTAAAC...
 ```
 
@@ -99,13 +101,26 @@ $ cat C1_clean_R1.fastq.gz RA_clean_R1.fastq.gz P1_clean_R1.fastq.gz > cleaned_R
 $ cat C1_clean_R2.fastq.gz RA_clean_R2.fastq.gz P1_clean_R2.fastq.gz > cleaned_R2.fastq.gz
 
 #we can now re-run assembly but subtract reads that are already part of full-length sequences
-$ assemble_facs.py -v full-length_sequences.fasta -1 cleaned_R1.fastq.gz -2 cleaned_R2.fastq.gz --skip_quality
+$ assemble_facs.py -v full-length_sequences.fasta -1 cleaned_R1.fastq.gz -2 cleaned_R2.fastq.gz
 
 #and then finally pull out full-length from this combined assembly
 $ get_full_length_facs.py -a q-trimmed_unicycler.fasta -i IGteloFACpooldataNF.txt --pool C1 RA P1
 ```
 
-There will still be some ~100 kb inserts that don't seem to match Sanger end sequences - they can be searched against the reference genome to figure out where they came from.
+There will still be some ~100 kb inserts that don't seem to match Sanger end sequences - they can be searched against the reference genome to figure out where they came from.  Then there is also an accessory script that you can use to filter the FASTA files, which can be run like this:
+```
+#to ouput all sequences > 80kb
+filter_seqs.py -i P4.all-contigs.fasta -l 80000
+
+#to ouput all sequences > 80kb that are Aspergillus wentii
+filter_seqs.py -i P4.all-contigs.fasta -m 80000 -s "Aspergillus wentii"
+
+#to ouput the longest unique contigs
+filter_seqs.py -i P4.all-contigs.fasta -l
+
+#to ouput the longest unique contigs from Fusarium solani
+filter_seqs.py -i P4.all-contigs.fasta -l -s "Fusarium solani"
+```
 
 ### Dependencies
 * Python 2
