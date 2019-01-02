@@ -124,6 +124,7 @@ filter_seqs.py -i P4.all-contigs.fasta -l -s "Fusarium solani"
 
 ### Dependencies
 * Python 2
+* biopython
 * trim_galore
 * minimap2
 * unicycler
