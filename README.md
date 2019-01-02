@@ -94,7 +94,7 @@ $ get_full_length_facs.py -a RA_unicycler.fasta -i IGteloFACpooldataNF.txt -p RA
 $ get_full_length_facs.py -a P1_unicycler.fasta -i IGteloFACpooldataNF.txt -p P1
 
 #combine all full-length sequences
-$ cat *_complete_facs.fasta > full-length_sequences.fasta
+$ cat *_fulllength-contigs.fasta > full-length_sequences.fasta
 
 #combine the quality trimmed and vector subtracted data for each forward/reverse read
 $ cat C1_clean_R1.fastq.gz RA_clean_R1.fastq.gz P1_clean_R1.fastq.gz > cleaned_R1.fastq.gz
